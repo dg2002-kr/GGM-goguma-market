@@ -18,16 +18,32 @@ type Item = {
   /** 미리보기 주소 (업로드 전에는 브라우저가 만든 임시 URL) */
   previewUrl: string;
   uploading: boolean;
+  /** 이번에 새로 올린 사진인지 (수정 화면에서 구분이 필요하다) */
+  isNew: boolean;
 };
 
 /**
  * 파일을 서버 액션으로 보내지 않고 브라우저에서 Storage로 바로 올린다.
  * 폼에는 업로드된 '경로'만 hidden input 으로 넘긴다.
  */
-export default function ImageUploader({ userId }: { userId: string }) {
+export default function ImageUploader({
+  userId,
+  initialPaths = [],
+}: {
+  userId: string;
+  /** 수정 화면에서 이미 올라가 있는 사진들 */
+  initialPaths?: string[];
+}) {
   const supabase = createClient();
   const inputRef = useRef<HTMLInputElement>(null);
-  const [items, setItems] = useState<Item[]>([]);
+  const [items, setItems] = useState<Item[]>(() =>
+    initialPaths.map((path) => ({
+      path,
+      previewUrl: productImageUrl(path),
+      uploading: false,
+      isNew: false,
+    })),
+  );
   const [error, setError] = useState<string | null>(null);
 
   const uploadedPaths = items
@@ -56,29 +72,30 @@ export default function ImageUploader({ userId }: { userId: string }) {
       }
 
       const previewUrl = URL.createObjectURL(file);
-      const placeholder: Item = { path: null, previewUrl, uploading: true };
-      setItems((prev) => [...prev, placeholder]);
+      setItems((prev) => [
+        ...prev,
+        { path: null, previewUrl, uploading: true, isNew: true },
+      ]);
 
       const path = buildImagePath(userId, file.name);
       const { error: uploadError } = await supabase.storage
         .from(PRODUCT_BUCKET)
         .upload(path, file, { cacheControl: "3600", upsert: false });
 
-      setItems((prev) =>
-        prev.map((item) =>
-          item.previewUrl === previewUrl
-            ? uploadError
-              ? item // 실패한 항목은 아래에서 제거
-              : { path, previewUrl: productImageUrl(path), uploading: false }
-            : item,
-        ),
-      );
-
       if (uploadError) {
         setError(`업로드 실패: ${uploadError.message}`);
         setItems((prev) => prev.filter((i) => i.previewUrl !== previewUrl));
         URL.revokeObjectURL(previewUrl);
+        continue;
       }
+
+      setItems((prev) =>
+        prev.map((item) =>
+          item.previewUrl === previewUrl
+            ? { ...item, path, previewUrl: productImageUrl(path), uploading: false }
+            : item,
+        ),
+      );
     }
 
     // 같은 파일을 다시 고를 수 있도록 초기화
@@ -87,7 +104,11 @@ export default function ImageUploader({ userId }: { userId: string }) {
 
   async function removeItem(target: Item) {
     setItems((prev) => prev.filter((i) => i !== target));
-    if (target.path) {
+
+    // 방금 올린 사진은 아직 어디에도 안 붙어 있으므로 바로 지운다.
+    // 원래 있던 사진은 '저장'을 눌렀을 때 서버 액션이 지운다.
+    // (수정을 취소하면 사진이 그대로 남아 있어야 하니까)
+    if (target.path && target.isNew) {
       await supabase.storage.from(PRODUCT_BUCKET).remove([target.path]);
     }
   }

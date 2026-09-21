@@ -13,16 +13,34 @@
 - **1단계 — 회원가입 / 로그인 / 로그아웃** ✅
 - **2단계 — 상품 등록 / 목록 / 상세** ✅
 - **3단계 — 상품 사진 업로드** ✅
+- **4단계 — 상품 수정 / 삭제 / 판매상태 변경 (CRUD 완성)** ✅
 
 | 경로 | 설명 |
 |---|---|
 | `/` | 상품 목록 (카테고리 필터, 최신순 50개) |
 | `/products/new` | 상품 등록 (사진 최대 5장) — **로그인 필요** |
-| `/products/[id]` | 상품 상세 + 사진 갤러리 (본인 상품이면 삭제 가능) |
+| `/products/[id]` | 상품 상세 + 사진 갤러리 |
+| `/products/[id]/edit` | 상품 수정 — **판매자 본인만** |
 | `/signup` | 회원가입 (닉네임 + 이메일 + 비밀번호) |
 | `/login` | 로그인 |
 | `/mypage` | 프로필 + 내가 등록한 상품 — **로그인 필요** |
 | `/auth/callback` | 이메일 인증 링크가 돌아오는 곳 |
+
+### 거래글 CRUD 한눈에 보기
+
+| | 무엇을 | 어디서 | 누가 |
+|---|---|---|---|
+| **C**reate | 상품 등록 | `/products/new` | 로그인한 사람 |
+| **R**ead | 목록 / 상세 | `/`, `/products/[id]` | **누구나** (비로그인 포함) |
+| **U**pdate | 전체 수정 | `/products/[id]/edit` | 판매자 본인 |
+| **U**pdate | 판매상태만 | 상세 페이지 버튼 | 판매자 본인 |
+| **D**elete | 삭제 (확인창) | 상세 페이지 | 판매자 본인 |
+
+세 겹으로 막습니다.
+
+1. **화면** — 내 글이 아니면 수정/삭제 버튼 자체가 안 보인다
+2. **서버 액션** — `auth.uid()` 와 `seller_id` 가 같은 행만 건드린다
+3. **RLS** — 위 둘을 뚫어도 DB가 거부한다
 
 ---
 
@@ -97,7 +115,7 @@ https://supabase.com/dashboard/project/dipkkqlnxzbjwayatsaj/auth/providers → *
 | `status` | text | `selling` / `reserved` / `sold` |
 | `region` | text | 등록 시 판매자의 동네를 복사해 둠 |
 | `image_paths` | text[] | Storage 파일 경로 목록, **첫 번째가 대표 사진** |
-| `created_at` / `updated_at` | timestamptz | |
+| `created_at` / `updated_at` | timestamptz | 수정하면 트리거가 `updated_at` 갱신 |
 
 - **RLS**: 조회는 누구나, 등록은 본인 이름으로만, 수정·삭제는 판매자 본인만
 - 인덱스: `created_at desc`, `seller_id`, `category`
@@ -138,18 +156,22 @@ src/
 │  ├─ signup/page.tsx
 │  ├─ mypage/page.tsx         # 프로필 + 내 상품
 │  ├─ products/
-│  │  ├─ actions.ts           # ★ createProduct / deleteProduct
-│  │  ├─ new/page.tsx         # 등록 폼
-│  │  └─ [id]/page.tsx        # 상세
+│  │  ├─ actions.ts           # ★ create / update / updateStatus / delete
+│  │  ├─ new/page.tsx         # 등록
+│  │  └─ [id]/
+│  │     ├─ page.tsx          # 상세
+│  │     └─ edit/page.tsx     # 수정
 │  └─ auth/
 │     ├─ actions.ts           # ★ signUp / signIn / signOut
 │     └─ callback/route.ts    # 이메일 인증 처리
 ├─ components/
 │  ├─ Header, Logo, SubmitButton, FormMessage
 │  ├─ LoginForm, SignupForm
-│  ├─ ProductForm, ImageUploader     # 등록 폼 + 사진 업로드
-│  ├─ ProductCard, CategoryFilter    # 목록
-│  └─ ProductGallery                 # 상세 사진 갤러리
+│  ├─ ProductForm, ImageUploader       # 등록·수정 공용 폼 + 사진 업로드
+│  ├─ ProductCard, CategoryFilter      # 목록
+│  ├─ ProductGallery                   # 상세 사진 갤러리
+│  ├─ ProductStatusSwitcher            # 판매중/예약중/판매완료
+│  └─ DeleteProductButton              # 삭제 확인창
 ├─ lib/
 │  ├─ categories.ts           # 카테고리 12종 + 상태 라벨
 │  ├─ format.ts               # 가격 / 상대시간 포맷
@@ -170,11 +192,12 @@ src/
 
 ### 상품이 저장되는 흐름
 
-1. `ProductForm`(클라이언트) → `createProduct` 서버 액션
-2. 서버에서 한 번 더 검증 후 `ggm_products` 에 insert
+1. `ProductForm`(클라이언트) → `createProduct` / `updateProduct` 서버 액션
+2. 서버에서 한 번 더 검증 후 `ggm_products` 에 insert / update
    - `seller_id` 는 **폼 값이 아니라 세션의 `user.id`** 를 쓴다 (위조 방지)
+   - 수정·삭제 쿼리에는 항상 `.eq("seller_id", user.id)` 를 붙인다
    - RLS 정책이 DB 레벨에서 한 번 더 막아 준다
-3. `revalidatePath("/")` 로 목록 캐시를 갱신하고 상세 페이지로 이동
+3. `revalidatePath()` 로 목록·상세 캐시를 갱신하고 상세 페이지로 이동
 
 ### 사진이 올라가는 흐름
 
@@ -185,16 +208,24 @@ src/
 3. 서버 액션이 그 경로가 `내 uid/...` 로 시작하는지 다시 검사하고 저장
 4. 화면에서는 `productImageUrl(path)` 로 공개 URL을 만들어 `next/image` 로 표시
 
-> ⚠️ 사진만 올리고 등록을 포기하면 Storage에 파일이 남습니다.
-> 상품을 삭제할 때는 `deleteProduct` 가 파일까지 지웁니다.
+### 수정할 때 사진을 지우는 시점
+
+| 어떤 사진을 뺐나 | 언제 Storage에서 지워지나 | 왜 |
+|---|---|---|
+| 방금 새로 올린 사진 | **즉시** | 아직 어느 상품에도 안 붙어 있으니 두면 쓰레기 파일 |
+| 원래 있던 사진 | **저장을 눌렀을 때** | 수정을 취소하면 사진이 그대로 남아 있어야 하니까 |
+
+`updateProduct` 가 수정 전 `image_paths` 와 새 목록을 비교해서 빠진 것만 지웁니다.
+
+> ⚠️ 사진만 올리고 등록/수정을 포기하면 Storage에 파일이 남습니다.
 > 고아 파일 정리는 나중 단계에서 다룹니다.
 
 ---
 
 ## 앞으로 만들 것 (로드맵)
 
-- [ ] 4단계: 상품 수정 / 판매상태 변경(예약중·판매완료) / 조회수
-- [ ] 5단계: 관심(찜) 기능 (`ggm_favorites`)
+- [ ] 5단계: 관심(찜) 기능 (`ggm_favorites`) + 조회수
 - [ ] 6단계: 채팅 (`ggm_chat_rooms`, `ggm_messages` + Realtime)
 - [ ] 7단계: 검색, 동네 설정, 프로필 수정
+- [ ] 정리: 고아 이미지 청소, 목록 무한스크롤
 - [ ] 배포: Vercel (가계부와 별도 링크)

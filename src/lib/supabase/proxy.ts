@@ -35,20 +35,22 @@ export async function updateSession(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   // 로그인이 필요한 경로 보호
+  const pathname = request.nextUrl.pathname;
   const protectedPaths = ["/mypage", "/products/new"];
-  const needsAuth = protectedPaths.some((path) =>
-    request.nextUrl.pathname.startsWith(path),
-  );
+  const needsAuth =
+    protectedPaths.some((path) => pathname.startsWith(path)) ||
+    // /products/<id>/edit 처럼 가운데에 id가 끼어 있는 경로
+    pathname.endsWith("/edit");
 
   if (!user && needsAuth) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
-    url.searchParams.set("next", request.nextUrl.pathname);
+    url.searchParams.set("next", pathname);
     return NextResponse.redirect(url);
   }
 
   // 이미 로그인한 사용자가 로그인/회원가입 페이지로 가면 홈으로
-  if (user && ["/login", "/signup"].includes(request.nextUrl.pathname)) {
+  if (user && ["/login", "/signup"].includes(pathname)) {
     const url = request.nextUrl.clone();
     url.pathname = "/";
     url.search = "";

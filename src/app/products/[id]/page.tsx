@@ -3,8 +3,9 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { categoryEmoji, STATUS_LABEL } from "@/lib/categories";
 import { formatPrice, formatRelativeTime } from "@/lib/format";
-import { deleteProduct } from "@/app/products/actions";
 import ProductGallery from "@/components/ProductGallery";
+import ProductStatusSwitcher from "@/components/ProductStatusSwitcher";
+import DeleteProductButton from "@/components/DeleteProductButton";
 import type { ProductWithSeller } from "@/types/database";
 
 type Props = { params: Promise<{ id: string }> };
@@ -38,6 +39,7 @@ export default async function ProductDetailPage({ params }: Props) {
   if (!product) notFound();
 
   const isMine = user?.id === product.seller_id;
+  const isEdited = product.updated_at !== product.created_at;
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-6">
@@ -85,6 +87,7 @@ export default async function ProductDetailPage({ params }: Props) {
         <p className="mt-1.5 text-sm text-muted">
           {categoryEmoji(product.category)} {product.category} ·{" "}
           {formatRelativeTime(product.created_at)}
+          {isEdited && " · 수정됨"}
         </p>
         <p className="mt-3 text-2xl font-extrabold">
           {formatPrice(product.price)}
@@ -101,15 +104,28 @@ export default async function ProductDetailPage({ params }: Props) {
 
       <div className="mt-8 border-t border-border pt-5">
         {isMine ? (
-          <form action={deleteProduct}>
-            <input type="hidden" name="id" value={product.id} />
-            <button
-              type="submit"
-              className="w-full rounded-xl border border-border bg-surface px-4 py-3 text-[15px] font-semibold text-danger transition hover:bg-danger/6"
-            >
-              상품 삭제
-            </button>
-          </form>
+          <div className="space-y-5">
+            <ProductStatusSwitcher
+              productId={product.id}
+              current={product.status}
+            />
+
+            <div className="flex gap-3">
+              <Link
+                href={`/products/${product.id}/edit`}
+                className="flex-1 rounded-xl bg-primary px-4 py-3 text-center text-[15px] font-semibold text-white transition hover:bg-primary-hover"
+              >
+                수정
+              </Link>
+              <div className="flex-1">
+                <DeleteProductButton
+                  productId={product.id}
+                  title={product.title}
+                  imageCount={product.image_paths?.length ?? 0}
+                />
+              </div>
+            </div>
+          </div>
         ) : (
           <button
             type="button"
