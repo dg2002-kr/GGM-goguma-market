@@ -8,6 +8,7 @@ import ProductGallery from "@/components/ProductGallery";
 import ProductStatusSwitcher from "@/components/ProductStatusSwitcher";
 import DeleteProductButton from "@/components/DeleteProductButton";
 import ProductStats from "@/components/ProductStats";
+import FavoriteButton from "@/components/FavoriteButton";
 import PriceOfferForm from "@/components/PriceOfferForm";
 import PriceOfferList from "@/components/PriceOfferList";
 import MyPriceOffer from "@/components/MyPriceOffer";
@@ -41,7 +42,7 @@ export default async function ProductDetailPage({ params }: Props) {
 
   const { data: product } = await supabase
     .from("ggm_products")
-    .select("*, ggm_profiles(nickname)")
+    .select("*, ggm_profiles!ggm_products_seller_id_fkey(nickname)")
     .eq("id", id)
     .maybeSingle<ProductWithSeller>();
 
@@ -89,6 +90,19 @@ export default async function ProductDetailPage({ params }: Props) {
   const canOffer =
     Boolean(user) && !isMine && product.status === "selling" &&
     (!myOffer || myOffer.status === "rejected");
+
+  // 내가 이 상품에 좋아요를 눌러 뒀는지 확인
+  // (RLS 덕분에 '내가 누른 것'만 조회된다)
+  let liked = false;
+  if (user && !isMine) {
+    const { data: favorite } = await supabase
+      .from("ggm_favorites")
+      .select("product_id")
+      .eq("product_id", product.id)
+      .eq("user_id", user.id)
+      .maybeSingle();
+    liked = Boolean(favorite);
+  }
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-6">
@@ -155,6 +169,7 @@ export default async function ProductDetailPage({ params }: Props) {
         <ProductStats
           viewCount={viewCount}
           offerCount={product.offer_count}
+          likeCount={product.like_count}
           chatCount={null}
         />
       </div>
@@ -185,14 +200,24 @@ export default async function ProductDetailPage({ params }: Props) {
           </div>
         ) : (
           <div className="space-y-3">
-            <button
-              type="button"
-              disabled
-              className="ggm-btn"
-              title="채팅 기능은 다음 단계에서 만듭니다"
-            >
-              💬 채팅하기 (준비 중)
-            </button>
+            <div className="flex gap-3">
+              <div className="flex-1">
+                <FavoriteButton
+                  productId={product.id}
+                  liked={liked}
+                  likeCount={product.like_count}
+                  isLoggedIn={Boolean(user)}
+                />
+              </div>
+              <button
+                type="button"
+                disabled
+                className="ggm-btn flex-1"
+                title="채팅 기능은 다음 단계에서 만듭니다"
+              >
+                💬 채팅 (준비 중)
+              </button>
+            </div>
 
             {/* 가격 인하 요청 — 로그인한 구매자만 */}
             {canOffer && (

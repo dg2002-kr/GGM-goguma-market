@@ -24,7 +24,7 @@ export default async function MyPage() {
 
   const { data: myProducts } = await supabase
     .from("ggm_products")
-    .select("*, ggm_profiles(nickname)")
+    .select("*, ggm_profiles!ggm_products_seller_id_fkey(nickname)")
     .eq("seller_id", user.id)
     .order("created_at", { ascending: false })
     .returns<ProductWithSeller[]>();

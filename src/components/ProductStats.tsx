@@ -8,10 +8,12 @@
 export default function ProductStats({
   viewCount,
   offerCount,
+  likeCount,
   chatCount = null,
 }: {
   viewCount: number;
   offerCount: number;
+  likeCount: number;
   /** 채팅 기능이 생기기 전까지는 null */
   chatCount?: number | null;
 }) {
@@ -37,10 +39,17 @@ export default function ProductStats({
       hint: "채팅 기능 준비 중",
       ready: chatCount !== null,
     },
+    {
+      icon: "❤️",
+      label: "좋아요",
+      value: likeCount,
+      hint: "좋아요 누른 사람 수",
+      ready: true,
+    },
   ];
 
   return (
-    <div className="grid grid-cols-3 divide-x divide-border overflow-hidden rounded-2xl border border-border bg-surface">
+    <div className="grid grid-cols-4 divide-x divide-border overflow-hidden rounded-2xl border border-border bg-surface">
       {items.map((item) => (
         <div
           key={item.label}

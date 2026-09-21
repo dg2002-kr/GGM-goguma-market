@@ -15,7 +15,8 @@
 - **3단계 — 상품 사진 업로드** ✅
 - **4단계 — 상품 수정 / 삭제 / 판매상태 변경 (CRUD 완성)** ✅
 - **5단계 — 가격 인하 요청 (구매자 제안 → 판매자 수락/거절)** ✅
-- **6단계 — 관심도 표시 (조회 인원 / 네고 인원 / 대화 인원)** ✅ *대화는 채팅 기능 대기*
+- **6단계 — 관심도 표시 (조회 / 네고 / 대화 인원)** ✅ *대화는 채팅 기능 대기*
+- **7단계 — 좋아요 + 목록에도 숫자 표시** ✅
 
 | 경로 | 설명 |
 |---|---|
@@ -149,6 +150,7 @@ https://supabase.com/dashboard/project/dipkkqlnxzbjwayatsaj/auth/providers → *
 | `ggm_products` | ✅ 판매 상품 |
 | `ggm_price_offers` | ✅ 가격 인하 요청 |
 | `ggm_product_views` | ✅ 누가 봤는지 (중복 제거용, **비공개**) |
+| `ggm_favorites` | ✅ 누가 좋아요를 눌렀는지 (**비공개**) |
 
 `auth.users`(Supabase 기본 인증 테이블)는 프로젝트 하나에 하나뿐이라
 가계부에서 나중에 로그인을 붙이면 **계정은 공유**됩니다. (가계부는 현재 로그인 없음)
@@ -181,6 +183,7 @@ https://supabase.com/dashboard/project/dipkkqlnxzbjwayatsaj/auth/providers → *
 | `image_paths` | text[] | Storage 파일 경로 목록, **첫 번째가 대표 사진** |
 | `view_count` | integer | 본 사람 수 (아래 "관심도 숫자" 참고) |
 | `offer_count` | integer | 네고 진행중인 사람 수 (자동 집계) |
+| `like_count` | integer | 좋아요 누른 사람 수 (자동 집계) |
 | `created_at` / `updated_at` | timestamptz | 수정하면 트리거가 `updated_at` 갱신 |
 
 - **RLS**: 조회는 누구나, 등록은 본인 이름으로만, 수정·삭제는 판매자 본인만
@@ -214,15 +217,37 @@ https://supabase.com/dashboard/project/dipkkqlnxzbjwayatsaj/auth/providers → *
 > **수락하면 상품 가격이 제안받은 금액으로 바뀝니다.**
 > (`respondToPriceOffer` 가 요청 상태와 상품 가격을 함께 고칩니다)
 
-### 관심도 숫자 — `view_count` / `offer_count`
+### `ggm_favorites` (좋아요)
 
-상품 상세에 **조회 / 가격 네고 / 대화** 인원을 보여 줍니다.
+| 컬럼 | 타입 | 설명 |
+|---|---|---|
+| `product_id` + `user_id` | uuid | 둘을 묶어 기본키 → **한 사람이 한 번만** 누를 수 있음 |
+| `created_at` | timestamptz | |
+
+| 무엇을 | 누가 |
+|---|---|
+| 조회 | **내가 누른 것만** (남이 뭘 좋아하는지는 비공개) |
+| 누르기 | 로그인한 사람이 자기 이름으로, **남의 상품에만** (내 상품은 불가) |
+| 취소 | 본인만 |
+
+화면에 보이는 "몇 명"은 이 표를 세지 않고 `ggm_products.like_count` 에서 읽습니다.
+그래야 로그인 안 한 사람에게도 숫자가 보입니다. 숫자는 트리거가 자동으로 맞춰 줍니다.
+
+> ⚠️ `ggm_favorites` 가 상품과 프로필을 **둘 다** 참조하면서,
+> "상품 → 판매자 닉네임" 조인 경로가 두 개로 보이게 되었습니다.
+> 그래서 앱에서는 경로를 이름으로 지정합니다:
+> `.select("*, ggm_profiles!ggm_products_seller_id_fkey(nickname)")`
+
+### 관심도 숫자 — `view_count` / `offer_count` / `like_count`
+
+**상품 상세**에는 큰 칸 4개로, **목록 카드**에는 한 줄로 같은 숫자를 보여 줍니다.
 
 | 숫자 | 어떻게 세나 |
 |---|---|
 | 👀 조회 | `ggm_products.view_count` — 같은 사람은 한 번만, **판매자 본인은 제외** |
 | 💸 가격 네고 | `ggm_products.offer_count` — 답변 대기중인 요청을 보낸 **사람 수** |
 | 💬 대화 | 채팅 기능이 없어 아직 `–` (준비 중) |
+| ❤️ 좋아요 | `ggm_products.like_count` — 좋아요 누른 **사람 수** |
 
 #### 조회 인원을 "사람 수"로 세는 방법
 
@@ -292,6 +317,7 @@ src/
 │  ├─ products/
 │  │  ├─ actions.ts           # ★ create / update / updateStatus / delete
 │  │  ├─ offer-actions.ts     # ★ 가격 인하 요청 보내기 / 취소 / 수락·거절
+│  ├─ favorite-actions.ts  # ★ 좋아요 켜기/끄기
 │  │  ├─ new/page.tsx         # 등록
 │  │  └─ [id]/
 │  │     ├─ page.tsx          # 상세
@@ -310,7 +336,9 @@ src/
 │  ├─ PriceOfferForm                   # (구매자) 가격 인하 요청 보내기
 │  ├─ MyPriceOffer                     # (구매자) 내가 보낸 요청 상태
 │  ├─ PriceOfferList                   # (판매자) 받은 요청 + 수락/거절
-│  └─ ProductStats                     # 조회 / 네고 / 대화 인원
+│  ├─ ProductStats                     # (상세) 조회 / 네고 / 대화 / 좋아요 칸
+│  ├─ ProductStatsInline               # (목록) 같은 숫자를 한 줄로
+│  └─ FavoriteButton                   # 좋아요 켜기/끄기
 ├─ lib/
 │  ├─ categories.ts           # 카테고리 12종 + 상태 라벨
 │  ├─ format.ts               # 가격 / 상대시간 포맷
@@ -382,7 +410,6 @@ src/
 
 ## 앞으로 만들 것 (로드맵)
 
-- [ ] 7단계: 관심(찜) 기능 (`ggm_favorites`)
 - [ ] 8단계: 채팅 (`ggm_chat_rooms`, `ggm_messages` + Realtime) → **대화 인원 숫자가 여기서 채워짐**
 - [ ] 9단계: 검색, 동네 설정, 프로필 수정
 - [ ] 마이페이지에 "내가 보낸 / 받은 가격 인하 요청" 모아 보기

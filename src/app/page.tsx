@@ -21,7 +21,7 @@ export default async function HomePage({
   // 판매자 닉네임까지 한 번에 가져온다 (ggm_products → ggm_profiles 조인)
   let query = supabase
     .from("ggm_products")
-    .select("*, ggm_profiles(nickname)")
+    .select("*, ggm_profiles!ggm_products_seller_id_fkey(nickname)")
     .order("created_at", { ascending: false })
     .limit(50);
 

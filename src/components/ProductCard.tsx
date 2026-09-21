@@ -3,6 +3,7 @@ import Link from "next/link";
 import { categoryEmoji, STATUS_LABEL } from "@/lib/categories";
 import { formatPrice, formatRelativeTime } from "@/lib/format";
 import { productImageUrl } from "@/lib/supabase/storage";
+import ProductStatsInline from "@/components/ProductStatsInline";
 import type { ProductWithSeller } from "@/types/database";
 
 export default function ProductCard({ product }: { product: ProductWithSeller }) {
@@ -56,6 +57,14 @@ export default function ProductCard({ product }: { product: ProductWithSeller })
           {product.ggm_profiles?.nickname &&
             ` · ${product.ggm_profiles.nickname}`}
         </p>
+        <div className="mt-2">
+          <ProductStatsInline
+            viewCount={product.view_count}
+            offerCount={product.offer_count}
+            likeCount={product.like_count}
+            chatCount={null}
+          />
+        </div>
       </div>
     </Link>
   );
