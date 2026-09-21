@@ -16,7 +16,7 @@ export const ALLOWED_TYPES = [
  * 버킷이 public 이라 별도 서명 없이 접근할 수 있다.
  */
 export function productImageUrl(path: string): string {
-  const base = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const base = process.env.SUPABASE_URL;
   return `${base}/storage/v1/object/public/${PRODUCT_BUCKET}/${path}`;
 }
 

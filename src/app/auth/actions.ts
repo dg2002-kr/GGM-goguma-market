@@ -28,6 +28,17 @@ function toKorean(message: string): string {
   return map[message] ?? message;
 }
 
+/**
+ * 이메일 인증 링크에 넣을 사이트 주소.
+ * 서버에서만 쓰는 값이라 브라우저로 보낼 필요가 없다 → 접두사도 필요 없다.
+ */
+function getSiteUrl(): string {
+  if (process.env.SITE_URL) return process.env.SITE_URL;
+  // Vercel은 배포된 주소를 자동으로 넣어 준다 (앞에 https:// 가 빠져 있다)
+  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
+  return "http://localhost:3000";
+}
+
 /* ------------------------------------------------------------------ */
 /* 회원가입                                                            */
 /* ------------------------------------------------------------------ */
@@ -56,7 +67,7 @@ export async function signUp(
   }
 
   const supabase = await createClient();
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
+  const siteUrl = getSiteUrl();
 
   const { data, error } = await supabase.auth.signUp({
     email,
