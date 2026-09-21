@@ -35,7 +35,7 @@ export async function updateSession(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   // 로그인이 필요한 경로 보호
-  const protectedPaths = ["/mypage"];
+  const protectedPaths = ["/mypage", "/products/new"];
   const needsAuth = protectedPaths.some((path) =>
     request.nextUrl.pathname.startsWith(path),
   );

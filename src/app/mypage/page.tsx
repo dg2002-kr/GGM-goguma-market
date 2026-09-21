@@ -1,7 +1,9 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { signOut } from "@/app/auth/actions";
-import type { Profile } from "@/types/database";
+import ProductCard from "@/components/ProductCard";
+import type { Profile, ProductWithSeller } from "@/types/database";
 
 export const metadata = { title: "마이페이지 · 고구마마켓" };
 
@@ -11,7 +13,7 @@ export default async function MyPage() {
     data: { user },
   } = await supabase.auth.getUser();
 
-  // 미들웨어에서 걸러 주지만, 안전장치로 한 번 더 확인
+  // proxy.ts 에서 걸러 주지만, 안전장치로 한 번 더 확인
   if (!user) redirect("/login?next=/mypage");
 
   const { data: profile } = await supabase
@@ -20,12 +22,19 @@ export default async function MyPage() {
     .eq("id", user.id)
     .single<Profile>();
 
+  const { data: myProducts } = await supabase
+    .from("ggm_products")
+    .select("*, ggm_profiles(nickname)")
+    .eq("seller_id", user.id)
+    .order("created_at", { ascending: false })
+    .returns<ProductWithSeller[]>();
+
   const joinedAt = new Date(
     profile?.created_at ?? user.created_at,
   ).toLocaleDateString("ko-KR");
 
   return (
-    <div className="mx-auto max-w-md px-4 py-10">
+    <div className="mx-auto max-w-2xl px-4 py-10">
       <h1 className="mb-6 text-2xl font-extrabold tracking-tight">마이페이지</h1>
 
       <div className="ggm-card">
@@ -54,15 +63,39 @@ export default async function MyPage() {
             <dd className="font-medium">{joinedAt}</dd>
           </div>
           <div className="flex justify-between py-3">
-            <dt className="text-muted">사용자 ID</dt>
-            <dd className="font-mono text-xs text-muted">
-              {user.id.slice(0, 8)}…
-            </dd>
+            <dt className="text-muted">등록한 상품</dt>
+            <dd className="font-medium">{myProducts?.length ?? 0}개</dd>
           </div>
         </dl>
       </div>
 
-      <form action={signOut} className="mt-4">
+      <section className="mt-10">
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-lg font-bold">내가 등록한 상품</h2>
+          <Link
+            href="/products/new"
+            className="text-sm font-semibold text-primary hover:underline"
+          >
+            + 새 상품 등록
+          </Link>
+        </div>
+
+        {myProducts && myProducts.length > 0 ? (
+          <ul className="space-y-3">
+            {myProducts.map((product) => (
+              <li key={product.id}>
+                <ProductCard product={product} />
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="rounded-2xl border border-dashed border-border bg-surface px-6 py-10 text-center text-sm text-muted">
+            아직 등록한 상품이 없어요
+          </p>
+        )}
+      </section>
+
+      <form action={signOut} className="mt-10">
         <button
           type="submit"
           className="w-full rounded-xl border border-border bg-surface px-4 py-3 text-[15px] font-semibold text-danger transition hover:bg-danger/6"

@@ -1,72 +1,97 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import { isValidCategory } from "@/lib/categories";
+import CategoryFilter from "@/components/CategoryFilter";
+import ProductCard from "@/components/ProductCard";
+import type { ProductWithSeller } from "@/types/database";
 
-export default async function HomePage() {
+export default async function HomePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ category?: string }>;
+}) {
+  const { category } = await searchParams;
+  const selected = category && isValidCategory(category) ? category : undefined;
+
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
+  // 판매자 닉네임까지 한 번에 가져온다 (ggm_products → ggm_profiles 조인)
+  let query = supabase
+    .from("ggm_products")
+    .select("*, ggm_profiles(nickname)")
+    .order("created_at", { ascending: false })
+    .limit(50);
+
+  if (selected) query = query.eq("category", selected);
+
+  const { data: products, error } = await query.returns<ProductWithSeller[]>();
+
   return (
-    <div className="mx-auto max-w-5xl px-4 py-12 sm:py-20">
-      <section className="text-center">
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-primary-soft px-3 py-1 text-xs font-semibold text-primary">
-          🍠 우리 동네 중고거래
-        </span>
-        <h1 className="mt-5 text-3xl font-extrabold leading-tight tracking-tight sm:text-5xl">
-          동네 이웃과 함께하는
-          <br />
-          <span className="text-primary">따뜻한 중고거래</span>
-        </h1>
-        <p className="mx-auto mt-4 max-w-md text-[15px] leading-relaxed text-muted">
-          안 쓰는 물건은 나누고, 필요한 물건은 가까이서.
-          <br />
-          고구마마켓에서 시작해 보세요.
-        </p>
-
-        <div className="mt-8 flex justify-center gap-3">
-          {user ? (
-            <Link
-              href="/mypage"
-              className="rounded-xl bg-primary px-6 py-3 text-[15px] font-semibold text-white transition hover:bg-primary-hover"
-            >
-              내 프로필 보기
-            </Link>
-          ) : (
-            <>
-              <Link
-                href="/signup"
-                className="rounded-xl bg-primary px-6 py-3 text-[15px] font-semibold text-white transition hover:bg-primary-hover"
-              >
-                시작하기
-              </Link>
-              <Link
-                href="/login"
-                className="rounded-xl border border-border bg-surface px-6 py-3 text-[15px] font-semibold transition hover:bg-surface-2"
-              >
-                로그인
-              </Link>
-            </>
-          )}
+    <div className="mx-auto max-w-2xl px-4 py-6">
+      <div className="mb-4 flex items-end justify-between gap-4">
+        <div>
+          <h1 className="text-xl font-extrabold tracking-tight">
+            {selected ?? "우리 동네"} 중고거래
+          </h1>
+          <p className="mt-1 text-sm text-muted">
+            이웃들이 내놓은 물건을 둘러보세요
+          </p>
         </div>
-      </section>
+      </div>
 
-      <section className="mt-16 grid gap-4 sm:grid-cols-3">
-        {[
-          { icon: "📦", title: "상품 등록", desc: "사진 찍고 바로 올리기" },
-          { icon: "💬", title: "이웃과 채팅", desc: "편하게 흥정하고 약속잡기" },
-          { icon: "📍", title: "동네 인증", desc: "가까운 이웃과 안전하게" },
-        ].map((f) => (
-          <div key={f.title} className="ggm-card">
-            <div className="text-2xl" aria-hidden>
-              {f.icon}
-            </div>
-            <h3 className="mt-3 font-bold">{f.title}</h3>
-            <p className="mt-1 text-sm text-muted">{f.desc}</p>
-            <p className="mt-3 text-xs font-medium text-accent">준비 중</p>
+      <CategoryFilter selected={selected} />
+
+      {error && (
+        <p className="mt-6 rounded-xl bg-danger/8 px-4 py-3 text-sm text-danger">
+          상품을 불러오지 못했습니다: {error.message}
+        </p>
+      )}
+
+      {products && products.length > 0 ? (
+        <ul className="mt-5 space-y-3">
+          {products.map((product) => (
+            <li key={product.id}>
+              <ProductCard product={product} />
+            </li>
+          ))}
+        </ul>
+      ) : (
+        !error && (
+          <div className="mt-8 rounded-2xl border border-dashed border-border bg-surface px-6 py-14 text-center">
+            <p className="text-4xl" aria-hidden>
+              🍠
+            </p>
+            <p className="mt-4 font-semibold">
+              {selected
+                ? `'${selected}' 카테고리에 아직 상품이 없어요`
+                : "아직 등록된 상품이 없어요"}
+            </p>
+            <p className="mt-1.5 text-sm text-muted">
+              첫 번째 상품을 올려 보세요!
+            </p>
+            <Link
+              href={user ? "/products/new" : "/login?next=/products/new"}
+              className="mt-5 inline-flex rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-primary-hover"
+            >
+              상품 등록하기
+            </Link>
           </div>
-        ))}
-      </section>
+        )
+      )}
+
+      {/* 글쓰기 버튼 (모바일 앱처럼 우하단 고정) */}
+      <Link
+        href={user ? "/products/new" : "/login?next=/products/new"}
+        className="fixed bottom-6 right-6 z-30 inline-flex items-center gap-2 rounded-full bg-primary px-5 py-3.5 font-semibold text-white shadow-lg shadow-primary/30 transition hover:bg-primary-hover active:scale-[0.98]"
+      >
+        <span className="text-lg leading-none" aria-hidden>
+          ＋
+        </span>
+        글쓰기
+      </Link>
     </div>
   );
 }
