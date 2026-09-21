@@ -1,0 +1,84 @@
+@import "tailwindcss";
+
+/* ============================================================
+   고구마마켓 디자인 토큰
+   ============================================================ */
+:root {
+  --background: #fffaf5;      /* 따뜻한 크림 */
+  --surface: #ffffff;
+  --surface-2: #fff4ea;
+  --foreground: #241a13;
+  --muted: #8b7d72;
+  --border: #f0e3d6;
+
+  --primary: #ff7a29;         /* 고구마 속살 주황 */
+  --primary-hover: #f26a12;
+  --primary-soft: #fff0e3;
+  --accent: #7b4397;          /* 고구마 껍질 보라 */
+  --danger: #e5484d;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-border: var(--border);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-soft: var(--primary-soft);
+  --color-accent: var(--accent);
+  --color-danger: var(--danger);
+
+  --font-sans: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont,
+    system-ui, "Segoe UI", "Malgun Gothic", sans-serif;
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  ::selection {
+    background: var(--primary-soft);
+  }
+}
+
+@layer components {
+  /* 공통 입력 필드 */
+  .ggm-input {
+    @apply w-full rounded-xl border border-border bg-surface px-4 py-3 text-[15px]
+           outline-none transition placeholder:text-muted/70
+           focus:border-primary focus:ring-4 focus:ring-primary/12;
+  }
+
+  /* 기본 버튼 */
+  .ggm-btn {
+    @apply inline-flex w-full items-center justify-center gap-2 rounded-xl
+           bg-primary px-4 py-3 text-[15px] font-semibold text-white transition
+           hover:bg-primary-hover active:scale-[0.99]
+           disabled:cursor-not-allowed disabled:opacity-55 disabled:active:scale-100;
+  }
+
+  .ggm-btn-ghost {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-lg px-3 py-2
+           text-sm font-medium text-muted transition hover:bg-surface-2 hover:text-foreground;
+  }
+
+  .ggm-label {
+    @apply mb-1.5 block text-sm font-medium text-foreground;
+  }
+
+  .ggm-card {
+    @apply rounded-2xl border border-border bg-surface p-6
+           shadow-[0_1px_2px_rgba(36,26,19,0.04),0_8px_24px_-12px_rgba(36,26,19,0.12)];
+  }
+}
