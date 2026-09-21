@@ -20,6 +20,7 @@ export type Product = {
   category: string;
   status: ProductStatus;
   region: string;
+  image_paths: string[];
   created_at: string;
   updated_at: string;
 };

@@ -10,6 +10,7 @@
   --foreground: #241a13;
   --muted: #8b7d72;
   --border: #f0e3d6;
+  --border-strong: #e4d3c1;
 
   --primary: #ff7a29;         /* 고구마 속살 주황 */
   --primary-hover: #f26a12;
@@ -25,6 +26,7 @@
   --color-foreground: var(--foreground);
   --color-muted: var(--muted);
   --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
   --color-primary: var(--primary);
   --color-primary-hover: var(--primary-hover);
   --color-primary-soft: var(--primary-soft);

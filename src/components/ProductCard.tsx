@@ -1,22 +1,44 @@
+import Image from "next/image";
 import Link from "next/link";
 import { categoryEmoji, STATUS_LABEL } from "@/lib/categories";
 import { formatPrice, formatRelativeTime } from "@/lib/format";
+import { productImageUrl } from "@/lib/supabase/storage";
 import type { ProductWithSeller } from "@/types/database";
 
 export default function ProductCard({ product }: { product: ProductWithSeller }) {
   const isClosed = product.status !== "selling";
+  const thumbnail = product.image_paths?.[0];
 
   return (
     <Link
       href={`/products/${product.id}`}
       className="group flex gap-4 rounded-2xl border border-border bg-surface p-3 transition hover:border-primary/40 hover:bg-surface-2"
     >
-      {/* 이미지 업로드는 다음 단계 — 지금은 카테고리 이모지로 대신한다 */}
-      <div className="relative grid h-24 w-24 shrink-0 place-items-center rounded-xl bg-surface-2 text-3xl">
-        <span aria-hidden>{categoryEmoji(product.category)}</span>
+      <div className="relative h-24 w-24 shrink-0 overflow-hidden rounded-xl bg-surface-2">
+        {thumbnail ? (
+          <Image
+            src={productImageUrl(thumbnail)}
+            alt={product.title}
+            fill
+            sizes="96px"
+            className="object-cover"
+          />
+        ) : (
+          // 사진을 안 올린 상품은 카테고리 이모지로 대신한다
+          <span className="grid h-full w-full place-items-center text-3xl" aria-hidden>
+            {categoryEmoji(product.category)}
+          </span>
+        )}
+
         {isClosed && (
-          <span className="absolute inset-0 grid place-items-center rounded-xl bg-foreground/55 text-xs font-bold text-white">
+          <span className="absolute inset-0 grid place-items-center bg-foreground/55 text-xs font-bold text-white">
             {STATUS_LABEL[product.status]}
+          </span>
+        )}
+
+        {product.image_paths?.length > 1 && (
+          <span className="absolute bottom-1 right-1 rounded-md bg-foreground/60 px-1.5 py-0.5 text-[11px] font-semibold text-white">
+            {product.image_paths.length}
           </span>
         )}
       </div>

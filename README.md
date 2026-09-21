@@ -4,7 +4,7 @@
 
 - **프레임워크**: Next.js 16 (App Router) + TypeScript
 - **스타일**: Tailwind CSS v4
-- **백엔드/인증**: Supabase (가계부와 **같은 프로젝트**를 공유)
+- **백엔드/인증/파일**: Supabase (가계부와 **같은 프로젝트**를 공유)
 
 ---
 
@@ -12,12 +12,13 @@
 
 - **1단계 — 회원가입 / 로그인 / 로그아웃** ✅
 - **2단계 — 상품 등록 / 목록 / 상세** ✅
+- **3단계 — 상품 사진 업로드** ✅
 
 | 경로 | 설명 |
 |---|---|
 | `/` | 상품 목록 (카테고리 필터, 최신순 50개) |
-| `/products/new` | 상품 등록 — **로그인 필요** |
-| `/products/[id]` | 상품 상세 (본인 상품이면 삭제 가능) |
+| `/products/new` | 상품 등록 (사진 최대 5장) — **로그인 필요** |
+| `/products/[id]` | 상품 상세 + 사진 갤러리 (본인 상품이면 삭제 가능) |
 | `/signup` | 회원가입 (닉네임 + 이메일 + 비밀번호) |
 | `/login` | 로그인 |
 | `/mypage` | 프로필 + 내가 등록한 상품 — **로그인 필요** |
@@ -33,8 +34,7 @@ npm run dev
 
 → http://localhost:3000
 
-> Node.js 24 LTS 설치 완료, 패키지 설치도 끝난 상태입니다.
-> 새로 클론했다면 `npm install` 을 먼저 하세요.
+> 새로 클론했다면 `npm install` 을 먼저 하세요. (Node.js 20 이상)
 
 ---
 
@@ -96,10 +96,30 @@ https://supabase.com/dashboard/project/dipkkqlnxzbjwayatsaj/auth/providers → *
 | `category` | text | `src/lib/categories.ts` 의 12종 |
 | `status` | text | `selling` / `reserved` / `sold` |
 | `region` | text | 등록 시 판매자의 동네를 복사해 둠 |
+| `image_paths` | text[] | Storage 파일 경로 목록, **첫 번째가 대표 사진** |
 | `created_at` / `updated_at` | timestamptz | |
 
 - **RLS**: 조회는 누구나, 등록은 본인 이름으로만, 수정·삭제는 판매자 본인만
 - 인덱스: `created_at desc`, `seller_id`, `category`
+
+### Storage — 버킷 `ggm-products`
+
+이미지 **파일 자체는 Storage에**, DB에는 **경로 문자열만** 저장합니다.
+
+| 항목 | 값 |
+|---|---|
+| 공개 여부 | public (사진은 누구나 볼 수 있어야 하므로) |
+| 파일당 최대 | 5MB |
+| 허용 형식 | jpeg / png / webp / gif |
+| 저장 경로 | `<사용자 id>/<랜덤 uuid>.<확장자>` |
+
+정책의 핵심은 **경로 첫 폴더가 곧 주인**이라는 점입니다.
+
+```sql
+(storage.foldername(name))[1] = auth.uid()::text
+```
+
+이 한 줄로 "남의 폴더에는 못 쓴다"가 보장됩니다. 읽기는 누구나 가능합니다.
 
 SQL 사본: [`supabase/migrations/`](supabase/migrations/)
 
@@ -124,13 +144,19 @@ src/
 │  └─ auth/
 │     ├─ actions.ts           # ★ signUp / signIn / signOut
 │     └─ callback/route.ts    # 이메일 인증 처리
-├─ components/                # Header, ProductCard, ProductForm, CategoryFilter ...
+├─ components/
+│  ├─ Header, Logo, SubmitButton, FormMessage
+│  ├─ LoginForm, SignupForm
+│  ├─ ProductForm, ImageUploader     # 등록 폼 + 사진 업로드
+│  ├─ ProductCard, CategoryFilter    # 목록
+│  └─ ProductGallery                 # 상세 사진 갤러리
 ├─ lib/
 │  ├─ categories.ts           # 카테고리 12종 + 상태 라벨
 │  ├─ format.ts               # 가격 / 상대시간 포맷
 │  └─ supabase/
 │     ├─ client.ts            # 브라우저용
 │     ├─ server.ts            # 서버 컴포넌트/액션용
+│     ├─ storage.ts           # 버킷 이름, 용량 제한, 공개 URL 만들기
 │     └─ proxy.ts             # 세션 갱신 로직
 └─ types/database.ts
 ```
@@ -150,11 +176,23 @@ src/
    - RLS 정책이 DB 레벨에서 한 번 더 막아 준다
 3. `revalidatePath("/")` 로 목록 캐시를 갱신하고 상세 페이지로 이동
 
+### 사진이 올라가는 흐름
+
+1. 파일을 고르면 `ImageUploader` 가 **브라우저에서 Storage로 바로** 올린다
+   - 서버 액션으로 파일을 보내지 않는다 → 서버 메모리/용량 제한을 안 탄다
+   - 올라가는 동안 미리보기는 `URL.createObjectURL()` 임시 주소를 쓴다
+2. 업로드가 끝나면 **경로만** hidden input 으로 폼에 실린다
+3. 서버 액션이 그 경로가 `내 uid/...` 로 시작하는지 다시 검사하고 저장
+4. 화면에서는 `productImageUrl(path)` 로 공개 URL을 만들어 `next/image` 로 표시
+
+> ⚠️ 사진만 올리고 등록을 포기하면 Storage에 파일이 남습니다.
+> 상품을 삭제할 때는 `deleteProduct` 가 파일까지 지웁니다.
+> 고아 파일 정리는 나중 단계에서 다룹니다.
+
 ---
 
 ## 앞으로 만들 것 (로드맵)
 
-- [ ] 3단계: 이미지 업로드 (Supabase Storage) — 지금은 카테고리 이모지로 대체
 - [ ] 4단계: 상품 수정 / 판매상태 변경(예약중·판매완료) / 조회수
 - [ ] 5단계: 관심(찜) 기능 (`ggm_favorites`)
 - [ ] 6단계: 채팅 (`ggm_chat_rooms`, `ggm_messages` + Realtime)

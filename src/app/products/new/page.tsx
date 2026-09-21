@@ -21,7 +21,7 @@ export default async function NewProductPage() {
       </p>
 
       <div className="ggm-card mt-6">
-        <ProductForm />
+        <ProductForm userId={user.id} />
       </div>
     </div>
   );

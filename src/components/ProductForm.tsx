@@ -2,11 +2,12 @@
 
 import { useActionState, useState } from "react";
 import { createProduct, type ProductFormState } from "@/app/products/actions";
+import ImageUploader from "@/components/ImageUploader";
 import { CATEGORIES } from "@/lib/categories";
 import SubmitButton from "@/components/SubmitButton";
 import { ErrorMessage } from "@/components/FormMessage";
 
-export default function ProductForm() {
+export default function ProductForm({ userId }: { userId: string }) {
   const [state, formAction] = useActionState<ProductFormState, FormData>(
     createProduct,
     null,
@@ -18,6 +19,8 @@ export default function ProductForm() {
 
   return (
     <form action={formAction} className="space-y-5">
+      <ImageUploader userId={userId} />
+
       <div>
         <label className="ggm-label" htmlFor="title">
           제목

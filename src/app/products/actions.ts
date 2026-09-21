@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { isValidCategory } from "@/lib/categories";
+import { MAX_IMAGES, PRODUCT_BUCKET } from "@/lib/supabase/storage";
 
 export type ProductFormState = {
   error?: string;
@@ -26,6 +27,10 @@ export async function createProduct(
   const priceRaw = String(formData.get("price") ?? "").replace(/[^0-9]/g, "");
   const category = String(formData.get("category") ?? "").trim();
   const description = String(formData.get("description") ?? "").trim();
+  const imagePaths = formData
+    .getAll("image_paths")
+    .map((v) => String(v))
+    .filter(Boolean);
 
   const values = { title, price: priceRaw, category, description };
 
@@ -42,6 +47,9 @@ export async function createProduct(
   if (description.length > 2000) {
     return { error: "설명은 2000자까지 쓸 수 있습니다.", values };
   }
+  if (imagePaths.length > MAX_IMAGES) {
+    return { error: `사진은 최대 ${MAX_IMAGES}장까지 올릴 수 있습니다.`, values };
+  }
 
   const supabase = await createClient();
   const {
@@ -50,6 +58,11 @@ export async function createProduct(
 
   if (!user) {
     return { error: "로그인이 필요합니다.", values };
+  }
+
+  // 사진 경로는 브라우저가 보낸 값이므로 '내 폴더' 것인지 서버에서 다시 확인한다.
+  if (imagePaths.some((path) => !path.startsWith(`${user.id}/`))) {
+    return { error: "잘못된 이미지 경로입니다.", values };
   }
 
   // 판매자의 동네를 상품에 같이 남겨 둔다
@@ -68,6 +81,7 @@ export async function createProduct(
       price,
       category,
       region: profile?.region ?? "우리동네",
+      image_paths: imagePaths,
     })
     .select("id")
     .single();
@@ -93,6 +107,18 @@ export async function deleteProduct(formData: FormData) {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
+
+  // 상품을 지우기 전에 올려 둔 사진부터 정리한다 (Storage는 자동으로 안 지워짐)
+  const { data: product } = await supabase
+    .from("ggm_products")
+    .select("image_paths")
+    .eq("id", id)
+    .eq("seller_id", user.id)
+    .maybeSingle();
+
+  if (product?.image_paths?.length) {
+    await supabase.storage.from(PRODUCT_BUCKET).remove(product.image_paths);
+  }
 
   await supabase
     .from("ggm_products")

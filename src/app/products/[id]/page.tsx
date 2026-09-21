@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { categoryEmoji, STATUS_LABEL } from "@/lib/categories";
 import { formatPrice, formatRelativeTime } from "@/lib/format";
 import { deleteProduct } from "@/app/products/actions";
+import ProductGallery from "@/components/ProductGallery";
 import type { ProductWithSeller } from "@/types/database";
 
 type Props = { params: Promise<{ id: string }> };
@@ -47,11 +48,18 @@ export default async function ProductDetailPage({ params }: Props) {
         ← 목록으로
       </Link>
 
-      {/* 대표 이미지 자리 — 업로드 기능은 다음 단계 */}
-      <div className="relative mt-4 grid aspect-[4/3] place-items-center rounded-2xl bg-surface-2 text-7xl">
-        <span aria-hidden>{categoryEmoji(product.category)}</span>
+      <div className="relative mt-4">
+        {product.image_paths?.length > 0 ? (
+          <ProductGallery paths={product.image_paths} title={product.title} />
+        ) : (
+          // 사진을 안 올린 상품은 카테고리 이모지로 대신한다
+          <div className="grid aspect-[4/3] place-items-center rounded-2xl bg-surface-2 text-7xl">
+            <span aria-hidden>{categoryEmoji(product.category)}</span>
+          </div>
+        )}
+
         {product.status !== "selling" && (
-          <span className="absolute left-4 top-4 rounded-lg bg-foreground/75 px-3 py-1.5 text-sm font-bold text-white">
+          <span className="absolute left-4 top-4 z-10 rounded-lg bg-foreground/75 px-3 py-1.5 text-sm font-bold text-white">
             {STATUS_LABEL[product.status]}
           </span>
         )}
