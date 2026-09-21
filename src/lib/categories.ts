@@ -32,3 +32,10 @@ export const STATUS_LABEL = {
 } as const;
 
 export type ProductStatus = keyof typeof STATUS_LABEL;
+
+/** 가격 인하 요청 상태 표시용 */
+export const OFFER_STATUS_LABEL = {
+  pending: "답변 기다리는 중",
+  accepted: "수락됨",
+  rejected: "거절됨",
+} as const;

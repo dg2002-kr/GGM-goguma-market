@@ -6,7 +6,14 @@ import { formatPrice, formatRelativeTime } from "@/lib/format";
 import ProductGallery from "@/components/ProductGallery";
 import ProductStatusSwitcher from "@/components/ProductStatusSwitcher";
 import DeleteProductButton from "@/components/DeleteProductButton";
-import type { ProductWithSeller } from "@/types/database";
+import PriceOfferForm from "@/components/PriceOfferForm";
+import PriceOfferList from "@/components/PriceOfferList";
+import MyPriceOffer from "@/components/MyPriceOffer";
+import type {
+  PriceOffer,
+  PriceOfferWithBuyer,
+  ProductWithSeller,
+} from "@/types/database";
 
 type Props = { params: Promise<{ id: string }> };
 
@@ -40,6 +47,30 @@ export default async function ProductDetailPage({ params }: Props) {
 
   const isMine = user?.id === product.seller_id;
   const isEdited = product.updated_at !== product.created_at;
+
+  // 가격 인하 요청 가져오기
+  // RLS 덕분에 판매자는 '이 상품에 온 모든 요청'을, 구매자는 '내가 보낸 것'만 받는다.
+  let offers: PriceOfferWithBuyer[] = [];
+  let myOffer: PriceOffer | null = null;
+
+  if (user) {
+    const { data } = await supabase
+      .from("ggm_price_offers")
+      .select("*, ggm_profiles(nickname)")
+      .eq("product_id", product.id)
+      .order("created_at", { ascending: false })
+      .returns<PriceOfferWithBuyer[]>();
+
+    offers = data ?? [];
+    if (!isMine) {
+      // 거절당했으면 다시 요청할 수 있도록, 가장 최근 것만 보여 준다
+      myOffer = offers[0] ?? null;
+    }
+  }
+
+  const canOffer =
+    Boolean(user) && !isMine && product.status === "selling" &&
+    (!myOffer || myOffer.status === "rejected");
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-6">
@@ -127,16 +158,58 @@ export default async function ProductDetailPage({ params }: Props) {
             </div>
           </div>
         ) : (
-          <button
-            type="button"
-            disabled
-            className="ggm-btn"
-            title="채팅 기능은 다음 단계에서 만듭니다"
-          >
-            💬 채팅하기 (준비 중)
-          </button>
+          <div className="space-y-3">
+            <button
+              type="button"
+              disabled
+              className="ggm-btn"
+              title="채팅 기능은 다음 단계에서 만듭니다"
+            >
+              💬 채팅하기 (준비 중)
+            </button>
+
+            {/* 가격 인하 요청 — 로그인한 구매자만 */}
+            {canOffer && (
+              <PriceOfferForm
+                productId={product.id}
+                currentPrice={product.price}
+              />
+            )}
+
+            {myOffer && <MyPriceOffer offer={myOffer} productId={product.id} />}
+
+            {!user && (
+              <p className="text-center text-sm text-muted">
+                가격 인하 요청은{" "}
+                <Link
+                  href={`/login?next=/products/${product.id}`}
+                  className="font-semibold text-primary hover:underline"
+                >
+                  로그인
+                </Link>{" "}
+                후에 할 수 있어요.
+              </p>
+            )}
+
+            {user && !canOffer && !myOffer && product.status !== "selling" && (
+              <p className="text-center text-sm text-muted">
+                판매중인 상품에만 가격 인하 요청을 보낼 수 있어요.
+              </p>
+            )}
+          </div>
         )}
       </div>
+
+      {/* 판매자에게만 보이는 받은 요청 목록 */}
+      {isMine && (
+        <div className="mt-10 border-t border-border pt-6">
+          <PriceOfferList
+            productId={product.id}
+            offers={offers}
+            currentPrice={product.price}
+          />
+        </div>
+      )}
     </div>
   );
 }

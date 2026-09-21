@@ -14,6 +14,7 @@
 - **2단계 — 상품 등록 / 목록 / 상세** ✅
 - **3단계 — 상품 사진 업로드** ✅
 - **4단계 — 상품 수정 / 삭제 / 판매상태 변경 (CRUD 완성)** ✅
+- **5단계 — 가격 인하 요청 (구매자 제안 → 판매자 수락/거절)** ✅
 
 | 경로 | 설명 |
 |---|---|
@@ -145,6 +146,7 @@ https://supabase.com/dashboard/project/dipkkqlnxzbjwayatsaj/auth/providers → *
 | `transactions`, `budgets`, `settings` | 🚫 가계부 것 — 건드리지 않음 |
 | `ggm_profiles` | ✅ 고구마마켓 사용자 프로필 |
 | `ggm_products` | ✅ 판매 상품 |
+| `ggm_price_offers` | ✅ 가격 인하 요청 |
 
 `auth.users`(Supabase 기본 인증 테이블)는 프로젝트 하나에 하나뿐이라
 가계부에서 나중에 로그인을 붙이면 **계정은 공유**됩니다. (가계부는 현재 로그인 없음)
@@ -179,6 +181,34 @@ https://supabase.com/dashboard/project/dipkkqlnxzbjwayatsaj/auth/providers → *
 
 - **RLS**: 조회는 누구나, 등록은 본인 이름으로만, 수정·삭제는 판매자 본인만
 - 인덱스: `created_at desc`, `seller_id`, `category`
+
+### `ggm_price_offers` (가격 인하 요청)
+
+| 컬럼 | 타입 | 설명 |
+|---|---|---|
+| `id` | uuid (PK) | |
+| `product_id` | uuid | 어떤 상품에 대한 요청인지 |
+| `buyer_id` | uuid | 요청을 보낸 사람 |
+| `offer_price` | bigint | 제안 가격 (현재가보다 낮아야 함) |
+| `message` | text | 한마디, 최대 200자 |
+| `status` | text | `pending` / `accepted` / `rejected` |
+| `created_at` / `responded_at` | timestamptz | 보낸 시각 / 답변한 시각 |
+
+**RLS가 여기서 특히 중요합니다.** 가격 흥정은 남이 보면 안 되는 내용이라
+`ggm_products` 와 달리 "누구나 조회"가 아닙니다.
+
+| 무엇을 | 누가 |
+|---|---|
+| 조회 | **요청을 보낸 구매자 본인 + 그 상품의 판매자**, 둘뿐 |
+| 생성 | 로그인한 사람이 자기 이름으로, **남의 상품에만** |
+| 수락/거절 | 그 상품의 판매자만 |
+| 취소(삭제) | 요청을 보낸 구매자 본인만 |
+
+같은 사람이 같은 상품에 답변 대기중인 요청을 두 개 만들지 못하도록,
+`status = 'pending'` 인 행에만 걸리는 **부분 유니크 인덱스**를 두었습니다.
+
+> **수락하면 상품 가격이 제안받은 금액으로 바뀝니다.**
+> (`respondToPriceOffer` 가 요청 상태와 상품 가격을 함께 고칩니다)
 
 ### Storage — 버킷 `ggm-products`
 
@@ -217,6 +247,7 @@ src/
 │  ├─ mypage/page.tsx         # 프로필 + 내 상품
 │  ├─ products/
 │  │  ├─ actions.ts           # ★ create / update / updateStatus / delete
+│  │  ├─ offer-actions.ts     # ★ 가격 인하 요청 보내기 / 취소 / 수락·거절
 │  │  ├─ new/page.tsx         # 등록
 │  │  └─ [id]/
 │  │     ├─ page.tsx          # 상세
@@ -231,7 +262,10 @@ src/
 │  ├─ ProductCard, CategoryFilter      # 목록
 │  ├─ ProductGallery                   # 상세 사진 갤러리
 │  ├─ ProductStatusSwitcher            # 판매중/예약중/판매완료
-│  └─ DeleteProductButton              # 삭제 확인창
+│  ├─ DeleteProductButton              # 삭제 확인창
+│  ├─ PriceOfferForm                   # (구매자) 가격 인하 요청 보내기
+│  ├─ MyPriceOffer                     # (구매자) 내가 보낸 요청 상태
+│  └─ PriceOfferList                   # (판매자) 받은 요청 + 수락/거절
 ├─ lib/
 │  ├─ categories.ts           # 카테고리 12종 + 상태 라벨
 │  ├─ format.ts               # 가격 / 상대시간 포맷
@@ -280,12 +314,32 @@ src/
 > ⚠️ 사진만 올리고 등록/수정을 포기하면 Storage에 파일이 남습니다.
 > 고아 파일 정리는 나중 단계에서 다룹니다.
 
+### 가격 인하 요청이 오가는 흐름
+
+```
+구매자                          판매자
+  │                               │
+  │ ① "48,000원에 주세요" 요청     │
+  ├──────────────────────────────▶│  상세 페이지에 요청 도착
+  │                               │
+  │                       ② 수락 또는 거절
+  │◀──────────────────────────────┤
+  │  수락 → 상품 가격이 48,000원으로 바뀜
+  │  거절 → 다른 금액으로 다시 요청 가능
+```
+
+- 요청 버튼은 **로그인한 사람에게만**, 그리고 **내 상품이 아닐 때만** 보입니다.
+- 판매중이 아닌 상품(예약중·판매완료)에는 요청할 수 없습니다.
+- 제안 금액은 **지금 가격보다 낮아야** 합니다. (화면과 서버 양쪽에서 확인)
+- 답변을 기다리는 동안에는 새 요청을 못 보내고, 대신 **취소**할 수 있습니다.
+
 ---
 
 ## 앞으로 만들 것 (로드맵)
 
-- [ ] 5단계: 관심(찜) 기능 (`ggm_favorites`) + 조회수
-- [ ] 6단계: 채팅 (`ggm_chat_rooms`, `ggm_messages` + Realtime)
-- [ ] 7단계: 검색, 동네 설정, 프로필 수정
+- [ ] 6단계: 관심(찜) 기능 (`ggm_favorites`) + 조회수
+- [ ] 7단계: 채팅 (`ggm_chat_rooms`, `ggm_messages` + Realtime)
+- [ ] 8단계: 검색, 동네 설정, 프로필 수정
+- [ ] 마이페이지에 "내가 보낸 / 받은 가격 인하 요청" 모아 보기
 - [ ] 정리: 고아 이미지 청소, 목록 무한스크롤
-- [ ] 배포: Vercel (가계부와 별도 링크)
+- [x] 배포: Vercel — https://ggm-market-zeta.vercel.app
