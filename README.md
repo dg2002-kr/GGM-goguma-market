@@ -53,6 +53,11 @@ npm run dev
 → http://localhost:3000
 
 > 새로 클론했다면 `npm install` 을 먼저 하세요. (Node.js 20 이상)
+>
+> `.claude/launch.json` 에는 node 실행파일의 **전체 경로**가 적혀 있습니다.
+> (이번에 Node.js를 새로 설치해서, 앱이 아직 `node`/`npm` 위치를 모르기 때문)
+> 컴퓨터를 재시작한 뒤에는 `"runtimeExecutable": "npm"`, `"runtimeArgs": ["run", "dev"]`
+> 로 되돌려도 잘 동작합니다.
 
 ---
 
