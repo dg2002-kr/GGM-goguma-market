@@ -2,10 +2,24 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
 /**
+ * 방문자 구분용 쿠키 이름.
+ * 로그인하지 않은 사람도 "같은 사람"인지 알아야 조회 인원을 중복 없이 셀 수 있다.
+ * 개인정보는 아무것도 담지 않고, 무작위로 만든 번호 하나만 들어간다.
+ */
+const VISITOR_COOKIE = "ggm_visitor";
+
+/**
  * 모든 요청마다 액세스 토큰을 갱신하고, 갱신된 쿠키를 응답에 실어 보낸다.
  * 이 과정이 없으면 토큰 만료 후 로그인이 임의로 풀린다.
  */
 export async function updateSession(request: NextRequest) {
+  // 방문자 번호가 없으면 새로 만들어서, 이번 요청부터 바로 쓸 수 있게 넣어 둔다
+  let visitorId = request.cookies.get(VISITOR_COOKIE)?.value;
+  if (!visitorId) {
+    visitorId = crypto.randomUUID();
+    request.cookies.set(VISITOR_COOKIE, visitorId);
+  }
+
   let supabaseResponse = NextResponse.next({ request });
 
   const supabase = createServerClient(
@@ -56,6 +70,14 @@ export async function updateSession(request: NextRequest) {
     url.search = "";
     return NextResponse.redirect(url);
   }
+
+  // 브라우저에도 방문자 번호를 저장해 둔다 (1년)
+  supabaseResponse.cookies.set(VISITOR_COOKIE, visitorId, {
+    httpOnly: true,
+    sameSite: "lax",
+    path: "/",
+    maxAge: 60 * 60 * 24 * 365,
+  });
 
   return supabaseResponse;
 }

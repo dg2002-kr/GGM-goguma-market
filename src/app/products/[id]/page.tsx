@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { categoryEmoji, STATUS_LABEL } from "@/lib/categories";
@@ -6,6 +7,7 @@ import { formatPrice, formatRelativeTime } from "@/lib/format";
 import ProductGallery from "@/components/ProductGallery";
 import ProductStatusSwitcher from "@/components/ProductStatusSwitcher";
 import DeleteProductButton from "@/components/DeleteProductButton";
+import ProductStats from "@/components/ProductStats";
 import PriceOfferForm from "@/components/PriceOfferForm";
 import PriceOfferList from "@/components/PriceOfferList";
 import MyPriceOffer from "@/components/MyPriceOffer";
@@ -47,6 +49,22 @@ export default async function ProductDetailPage({ params }: Props) {
 
   const isMine = user?.id === product.seller_id;
   const isEdited = product.updated_at !== product.created_at;
+
+  // 조회 인원 기록 — 내 상품을 내가 보는 건 세지 않는다.
+  // 로그인했으면 계정으로, 아니면 방문자 쿠키로 같은 사람인지 구분한다.
+  // 함수가 방금 기록까지 반영한 인원 수를 돌려주므로 화면에 바로 쓸 수 있다.
+  let viewCount = product.view_count;
+  if (!isMine) {
+    const visitorId = (await cookies()).get("ggm_visitor")?.value;
+    const viewerKey = user ? `u:${user.id}` : visitorId ? `v:${visitorId}` : null;
+    if (viewerKey) {
+      const { data: counted } = await supabase.rpc("ggm_track_product_view", {
+        p_product_id: product.id,
+        p_viewer_key: viewerKey,
+      });
+      if (typeof counted === "number") viewCount = counted;
+    }
+  }
 
   // 가격 인하 요청 가져오기
   // RLS 덕분에 판매자는 '이 상품에 온 모든 요청'을, 구매자는 '내가 보낸 것'만 받는다.
@@ -131,6 +149,14 @@ export default async function ProductDetailPage({ params }: Props) {
         ) : (
           <p className="mt-5 text-sm text-muted">설명이 없습니다.</p>
         )}
+      </div>
+
+      <div className="mt-6">
+        <ProductStats
+          viewCount={viewCount}
+          offerCount={product.offer_count}
+          chatCount={null}
+        />
       </div>
 
       <div className="mt-8 border-t border-border pt-5">

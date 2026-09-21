@@ -15,6 +15,7 @@
 - **3단계 — 상품 사진 업로드** ✅
 - **4단계 — 상품 수정 / 삭제 / 판매상태 변경 (CRUD 완성)** ✅
 - **5단계 — 가격 인하 요청 (구매자 제안 → 판매자 수락/거절)** ✅
+- **6단계 — 관심도 표시 (조회 인원 / 네고 인원 / 대화 인원)** ✅ *대화는 채팅 기능 대기*
 
 | 경로 | 설명 |
 |---|---|
@@ -147,6 +148,7 @@ https://supabase.com/dashboard/project/dipkkqlnxzbjwayatsaj/auth/providers → *
 | `ggm_profiles` | ✅ 고구마마켓 사용자 프로필 |
 | `ggm_products` | ✅ 판매 상품 |
 | `ggm_price_offers` | ✅ 가격 인하 요청 |
+| `ggm_product_views` | ✅ 누가 봤는지 (중복 제거용, **비공개**) |
 
 `auth.users`(Supabase 기본 인증 테이블)는 프로젝트 하나에 하나뿐이라
 가계부에서 나중에 로그인을 붙이면 **계정은 공유**됩니다. (가계부는 현재 로그인 없음)
@@ -177,6 +179,8 @@ https://supabase.com/dashboard/project/dipkkqlnxzbjwayatsaj/auth/providers → *
 | `status` | text | `selling` / `reserved` / `sold` |
 | `region` | text | 등록 시 판매자의 동네를 복사해 둠 |
 | `image_paths` | text[] | Storage 파일 경로 목록, **첫 번째가 대표 사진** |
+| `view_count` | integer | 본 사람 수 (아래 "관심도 숫자" 참고) |
+| `offer_count` | integer | 네고 진행중인 사람 수 (자동 집계) |
 | `created_at` / `updated_at` | timestamptz | 수정하면 트리거가 `updated_at` 갱신 |
 
 - **RLS**: 조회는 누구나, 등록은 본인 이름으로만, 수정·삭제는 판매자 본인만
@@ -209,6 +213,46 @@ https://supabase.com/dashboard/project/dipkkqlnxzbjwayatsaj/auth/providers → *
 
 > **수락하면 상품 가격이 제안받은 금액으로 바뀝니다.**
 > (`respondToPriceOffer` 가 요청 상태와 상품 가격을 함께 고칩니다)
+
+### 관심도 숫자 — `view_count` / `offer_count`
+
+상품 상세에 **조회 / 가격 네고 / 대화** 인원을 보여 줍니다.
+
+| 숫자 | 어떻게 세나 |
+|---|---|
+| 👀 조회 | `ggm_products.view_count` — 같은 사람은 한 번만, **판매자 본인은 제외** |
+| 💸 가격 네고 | `ggm_products.offer_count` — 답변 대기중인 요청을 보낸 **사람 수** |
+| 💬 대화 | 채팅 기능이 없어 아직 `–` (준비 중) |
+
+#### 조회 인원을 "사람 수"로 세는 방법
+
+단순히 페이지가 열릴 때마다 +1 하면 **새로고침만 해도 숫자가 오릅니다.**
+그래서 "누가 봤는지"를 `ggm_product_views` 표에 한 줄씩 남기고,
+`(상품, 사람)` 조합을 기본키로 묶어 **같은 사람은 두 번 안 들어가게** 했습니다.
+
+사람을 구분하는 기준:
+
+- 로그인했으면 → 계정 번호 (`u:<사용자 id>`)
+- 로그인 안 했으면 → 방문자 쿠키 (`v:<무작위 번호>`)
+  `proxy.ts` 가 `ggm_visitor` 쿠키를 만들어 둡니다. 개인정보는 안 담기고 무작위 번호뿐입니다.
+
+이 표는 **정책을 하나도 만들지 않았습니다.** 즉 앱에서 직접 읽거나 쓸 수 없습니다.
+"누가 무엇을 봤는지"는 아무에게도 안 보여야 하니까요.
+대신 `ggm_track_product_view()` 함수만 기록할 수 있게 열어 두었습니다.
+(`security definer` = 이 함수는 관리자 권한으로 동작한다는 뜻)
+
+> Supabase 보안 점검에 **의도한 설계 2건**이 경고로 뜹니다.
+> - `ggm_product_views has RLS enabled, but no policies` → 일부러 그렇게 했습니다
+> - `ggm_track_product_view ... executable by anon` → 로그인 안 한 방문자도 조회가 세어져야 하므로 일부러 열었습니다
+>
+> ⚠️ 한계: 로그인 안 한 상태에서는 마음만 먹으면 번호를 바꿔 가며 조회수를 부풀릴 수 있습니다.
+> 로그인한 경우에는 함수가 화면이 보낸 값을 무시하고 실제 계정으로만 기록하므로 불가능합니다.
+
+#### 숫자가 올라도 "수정됨"이 뜨지 않게
+
+조회수가 오를 때마다 상품이 수정된 것으로 처리되면 안 됩니다.
+그래서 `updated_at` 을 갱신하는 규칙을 바꿔서,
+**조회수·네고수 말고 바뀐 게 없으면 수정 시각을 건드리지 않습니다.**
 
 ### Storage — 버킷 `ggm-products`
 
@@ -265,7 +309,8 @@ src/
 │  ├─ DeleteProductButton              # 삭제 확인창
 │  ├─ PriceOfferForm                   # (구매자) 가격 인하 요청 보내기
 │  ├─ MyPriceOffer                     # (구매자) 내가 보낸 요청 상태
-│  └─ PriceOfferList                   # (판매자) 받은 요청 + 수락/거절
+│  ├─ PriceOfferList                   # (판매자) 받은 요청 + 수락/거절
+│  └─ ProductStats                     # 조회 / 네고 / 대화 인원
 ├─ lib/
 │  ├─ categories.ts           # 카테고리 12종 + 상태 라벨
 │  ├─ format.ts               # 가격 / 상대시간 포맷
@@ -337,9 +382,9 @@ src/
 
 ## 앞으로 만들 것 (로드맵)
 
-- [ ] 6단계: 관심(찜) 기능 (`ggm_favorites`) + 조회수
-- [ ] 7단계: 채팅 (`ggm_chat_rooms`, `ggm_messages` + Realtime)
-- [ ] 8단계: 검색, 동네 설정, 프로필 수정
+- [ ] 7단계: 관심(찜) 기능 (`ggm_favorites`)
+- [ ] 8단계: 채팅 (`ggm_chat_rooms`, `ggm_messages` + Realtime) → **대화 인원 숫자가 여기서 채워짐**
+- [ ] 9단계: 검색, 동네 설정, 프로필 수정
 - [ ] 마이페이지에 "내가 보낸 / 받은 가격 인하 요청" 모아 보기
 - [ ] 정리: 고아 이미지 청소, 목록 무한스크롤
 - [x] 배포: Vercel — https://ggm-market-zeta.vercel.app

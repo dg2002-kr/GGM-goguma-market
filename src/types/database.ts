@@ -21,6 +21,10 @@ export type Product = {
   status: ProductStatus;
   region: string;
   image_paths: string[];
+  /** 이 상품을 본 사람 수 (중복 제외, 판매자 본인 제외) */
+  view_count: number;
+  /** 가격 네고 진행중인 사람 수 */
+  offer_count: number;
   created_at: string;
   updated_at: string;
 };
